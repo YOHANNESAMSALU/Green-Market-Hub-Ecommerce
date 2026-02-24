@@ -1,0 +1,65 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+/*animations*/
+@keyframes rotate {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes pulse-scale {
+  0%, 100% { transform: scale(1); }
+   50% { transform: scale(1.1); } 
+  
+}
+
+.promo-btn-container {
+  position: relative;
+  display: inline-flex;
+  padding: 3px; /* Increased slightly to show the soft glow */
+  border-radius: 14px;
+  overflow: hidden; /* Clips the rotation to the button shape */
+  animation: pulse-scale 2s infinite ease-in-out;
+}
+.promo-btn-container :hover {
+  animation: pulse-scale 1s infinite ease-in-out; 
+}
+
+/* The Rotating Layer with Soft Edges */
+.promo-btn-container::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  /* Your multi-color gradient */
+  background: conic-gradient(
+    rgb(255, 255, 0), 
+    blue, 
+    orange, 
+    red, 
+    rgba(224, 11, 231, 0.8), 
+    brown, 
+    yellow
+  );
+  animation: rotate 4s linear infinite;
+  /* Softens the color transitions like a shadow */
+  filter: blur(12px); 
+}
+
+/* Static Inner Green Button */
+.promo-btn-inner {
+  position: relative;
+  z-index: 10;
+  background-color: rgba(3, 70, 5, 0.8); /* Green with transparency */
+  color: white;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  padding: 12px 28px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
