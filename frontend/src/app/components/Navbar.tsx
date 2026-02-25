@@ -108,10 +108,12 @@ export function Navbar({ onNavigate, cartItemCount = 0, authUser, onLogout }: Na
                 </Button>
               )}
 
-              <Button variant="ghost" size="sm" onClick={() => navigateAndClose('favorites')}>
-                <Heart className="w-5 h-5 mr-2" />
-                Favorites
-              </Button>
+              {authUser && (
+                <Button variant="ghost" size="sm" onClick={() => navigateAndClose('favorites')}>
+                  <Heart className="w-5 h-5 mr-2" />
+                  Favorites
+                </Button>
+              )}
 
               <Button variant="ghost" size="sm" onClick={() => navigateAndClose('orders')}>
                 <Package className="w-5 h-5 mr-2" />
@@ -127,7 +129,7 @@ export function Navbar({ onNavigate, cartItemCount = 0, authUser, onLogout }: Na
               className="relative p-2 hover:bg-gray-100 rounded-xl transition-colors"
             >
               <ShoppingCart className="w-6 h-6 text-gray-700" />
-              {cartItemCount > 0 && (
+              {authUser && cartItemCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-[#16A34A] text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
                   {cartItemCount}
                 </span>
@@ -186,12 +188,14 @@ export function Navbar({ onNavigate, cartItemCount = 0, authUser, onLogout }: Na
                 </button>
               )}
 
-              <button
-                className="text-left px-3 py-2 rounded-lg hover:bg-gray-100"
-                onClick={() => navigateAndClose('favorites')}
-              >
-                Favorites
-              </button>
+              {authUser && (
+                <button
+                  className="text-left px-3 py-2 rounded-lg hover:bg-gray-100"
+                  onClick={() => navigateAndClose('favorites')}
+                >
+                  Favorites
+                </button>
+              )}
               <button
                 className="text-left px-3 py-2 rounded-lg hover:bg-gray-100"
                 onClick={() => navigateAndClose('orders')}

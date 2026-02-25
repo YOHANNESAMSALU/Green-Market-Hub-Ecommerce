@@ -40,6 +40,8 @@ function App() {
   const [authUser, setAuthUser] = useState<FrontendAuthUser | null>(null);
   const [productFilters, setProductFilters] = useState<{ search?: string; category?: string } | null>(null);
   const [paymentNotice, setPaymentNotice] = useState('');
+  const [pendingAuthRedirect, setPendingAuthRedirect] = useState<{ page: Page; data?: any } | null>(null);
+  const protectedPages = new Set<Page>(['cart', 'orders', 'checkout', 'favorites']);
 
   const clearAuth = () => {
     localStorage.removeItem(AUTH_USER_KEY);
@@ -64,6 +66,11 @@ function App() {
   };
 
   const refreshCartCount = () => {
+    const token = localStorage.getItem(AUTH_SESSION_TOKEN_KEY);
+    if (!token) {
+      setCartItemCount(0);
+      return;
+    }
     getCartItems()
       .then((items) => {
         const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -105,6 +112,16 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (currentPage === 'login') {
+      return;
+    }
+    if (protectedPages.has(currentPage) && !authUser) {
+      setPendingAuthRedirect({ page: currentPage });
+      setCurrentPage('login');
+    }
+  }, [authUser, currentPage]);
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -118,7 +135,16 @@ function App() {
   };
 
   const handleNavigate = (page: string, data?: any) => {
-    setCurrentPage(page as Page);
+    const nextPage = page as Page;
+    if (protectedPages.has(nextPage) && !authUser) {
+      setPendingAuthRedirect({ page: nextPage, data });
+      setCurrentPage('login');
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    setCurrentPage(nextPage);
+    setPendingAuthRedirect(null);
 
     if (page === 'products') {
       setProductFilters(data || null);
@@ -173,9 +199,25 @@ function App() {
         return (
           <Login
             onNavigate={handleNavigate}
+            redirectTo={pendingAuthRedirect?.page || 'home'}
             onAuthSuccess={(user) => {
               setAuthUser(user);
               refreshCartCount();
+              if (pendingAuthRedirect) {
+                const { page, data } = pendingAuthRedirect;
+                setPendingAuthRedirect(null);
+                setCurrentPage(page);
+                if (page === 'products') {
+                  setProductFilters(data || null);
+                }
+                if (page === 'product-details' && data) {
+                  setSelectedProduct(data);
+                }
+                window.scrollTo(0, 0);
+              } else {
+                setCurrentPage('home');
+                window.scrollTo(0, 0);
+              }
             }}
           />
         );

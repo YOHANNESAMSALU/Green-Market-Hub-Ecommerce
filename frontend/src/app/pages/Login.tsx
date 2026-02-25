@@ -7,6 +7,7 @@ import { AUTH_SESSION_TOKEN_KEY, AUTH_USER_KEY, FrontendAuthUser, login, signup 
 interface LoginProps {
   onNavigate: (page: string) => void;
   onAuthSuccess?: (user: FrontendAuthUser) => void;
+  redirectTo?: string;
 }
 
 const ETHIOPIAN_PHONE_REGEX = /^(?:\+251|0)?9\d{8}$/;
@@ -14,12 +15,13 @@ const ETHIOPIAN_PHONE_REGEX = /^(?:\+251|0)?9\d{8}$/;
 type AuthMode = 'login' | 'signup';
 type Method = 'email' | 'phone';
 
-export function Login({ onNavigate, onAuthSuccess }: LoginProps) {
+export function Login({ onNavigate, onAuthSuccess, redirectTo = 'home' }: LoginProps) {
   const [mode, setMode] = useState<AuthMode>('login');
   const [method, setMethod] = useState<Method>('phone');
   const [name, setName] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -86,7 +88,9 @@ export function Login({ onNavigate, onAuthSuccess }: LoginProps) {
         onAuthSuccess?.(result.user);
         setMessage('Login successful.');
       }
-      window.setTimeout(() => onNavigate('home'), 900);
+      if (!onAuthSuccess) {
+        window.setTimeout(() => onNavigate(redirectTo), 900);
+      }
     } catch {
       setError(mode === 'signup' ? 'Could not sign up. Try another email/phone.' : 'Could not login. Check your details.');
     } finally {
@@ -164,11 +168,19 @@ export function Login({ onNavigate, onAuthSuccess }: LoginProps) {
 
             <Input
               label="Password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               placeholder="Enter password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={showPassword}
+                onChange={(e) => setShowPassword(e.target.checked)}
+              />
+              Show password
+            </label>
 
             {error && <p className="text-sm text-red-600">{error}</p>}
             {message && <p className="text-sm text-[#166534]">{message}</p>}

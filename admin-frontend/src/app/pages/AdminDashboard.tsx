@@ -8,6 +8,7 @@ import {
   AdminCategory,
   AdminDeliveryOrder,
   AdminProduct,
+  ProductVariantGroup,
   AdminUserRow,
   SellerRequestRow,
   createAdminCategory,
@@ -43,6 +44,7 @@ type ReportsData = {
 };
 
 export function AdminDashboard() {
+  const blankVariantRow = () => ({ value: '', price: '', discountPrice: '', stock: '', sku: '', images: [] as string[] });
   const [activeItem, setActiveItem] = useState('overview');
   const [reports, setReports] = useState<ReportsData | null>(null);
   const [products, setProducts] = useState<AdminProduct[]>([]);
@@ -75,6 +77,8 @@ export function AdminDashboard() {
     brand: '',
     categoryId: '',
     images: [] as string[],
+    variantType: '',
+    variants: [blankVariantRow()],
   });
   const autoPromoteAttemptedRef = useRef(false);
 
@@ -245,6 +249,23 @@ export function AdminDashboard() {
       showError('Product name and category are required.');
       return;
     }
+    const variantValues = newProduct.variants
+      .filter((row) => row.value.trim() && row.price !== '')
+      .map((row) => ({
+        value: row.value.trim(),
+        title: `${newProduct.variantType.trim()}: ${row.value.trim()}`,
+        sku: row.sku.trim(),
+        price: Number(row.price || 0),
+        discountPrice: row.discountPrice === '' ? null : Number(row.discountPrice || 0),
+        stock: row.stock === '' ? Number(newProduct.stock || 0) : Number(row.stock || 0),
+        images: row.images || [],
+      }));
+
+    const variantGroups: ProductVariantGroup[] =
+      newProduct.variantType.trim() && variantValues.length
+        ? [{ type: newProduct.variantType.trim(), values: variantValues }]
+        : [];
+
     try {
       await createAdminProduct({
         name: newProduct.name.trim(),
@@ -255,6 +276,7 @@ export function AdminDashboard() {
         brand: newProduct.brand.trim(),
         categoryId: newProduct.categoryId,
         images: newProduct.images,
+        variantGroups,
       });
       setNewProduct({
         name: '',
@@ -265,6 +287,8 @@ export function AdminDashboard() {
         brand: '',
         categoryId: '',
         images: [],
+        variantType: '',
+        variants: [blankVariantRow()],
       });
       await loadAllData();
       showMessage('Product created.');
@@ -275,6 +299,26 @@ export function AdminDashboard() {
 
   const handleUpdateProduct = async (product: AdminProduct) => {
     const existingImages = Array.isArray(product.images) ? product.images : [];
+    const variantGroups = Array.isArray(product.variantGroups)
+      ? product.variantGroups.map((group) => ({
+          type: String(group.type || '').trim(),
+          values: (Array.isArray(group.values) ? group.values : [])
+            .map((row) => ({
+              id: row.id,
+              value: String(row.value || '').trim(),
+              title: row.title ? String(row.title) : undefined,
+              sku: row.sku ? String(row.sku) : '',
+              price: Number(row.price || 0),
+              discountPrice:
+                row.discountPrice === null || row.discountPrice === undefined || row.discountPrice === ''
+                  ? null
+                  : Number(row.discountPrice),
+              stock: row.stock === undefined ? Number(product.stock || 0) : Number(row.stock || 0),
+              images: Array.isArray(row.images) ? row.images : [],
+            }))
+            .filter((row) => row.value),
+        }))
+      : [];
     try {
       await updateAdminProduct(product.id, {
         name: product.name,
@@ -285,6 +329,7 @@ export function AdminDashboard() {
         brand: product.brand,
         categoryId: product.categoryId,
         images: existingImages,
+        variantGroups,
       });
       setEditingProductId(null);
       await loadAllData();
@@ -351,6 +396,80 @@ export function AdminDashboard() {
         if (row.id !== productId) return row;
         const currentImages = Array.isArray(row.images) ? row.images : [];
         return { ...row, images: currentImages.filter((_, idx) => idx !== index) };
+      }),
+    );
+  };
+
+  const addNewVariantImages = async (variantIndex: number, event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files?.length) return;
+    try {
+      const dataUrls = await filesToDataUrls(files);
+      setNewProduct((prev) => ({
+        ...prev,
+        variants: prev.variants.map((row, idx) =>
+          idx === variantIndex ? { ...row, images: [...(row.images || []), ...dataUrls] } : row,
+        ),
+      }));
+    } catch {
+      showError('Could not read selected variant images.');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const removeNewVariantImage = (variantIndex: number, imageIndex: number) => {
+    setNewProduct((prev) => ({
+      ...prev,
+      variants: prev.variants.map((row, idx) =>
+        idx === variantIndex
+          ? { ...row, images: (row.images || []).filter((_, currentImageIndex) => currentImageIndex !== imageIndex) }
+          : row,
+      ),
+    }));
+  };
+
+  const addEditingVariantImages = async (productId: string, variantIndex: number, event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files?.length) return;
+    try {
+      const dataUrls = await filesToDataUrls(files);
+      setProducts((prev) =>
+        prev.map((row) => {
+          if (row.id !== productId) return row;
+          const groups = Array.isArray(row.variantGroups) ? row.variantGroups : [];
+          const firstGroup = groups[0];
+          if (!firstGroup) return row;
+          const values = Array.isArray(firstGroup.values) ? firstGroup.values : [];
+          const updatedValues = values.map((variantRow, idx) =>
+            idx === variantIndex
+              ? { ...variantRow, images: [...(Array.isArray(variantRow.images) ? variantRow.images : []), ...dataUrls] }
+              : variantRow,
+          );
+          return { ...row, variantGroups: [{ ...firstGroup, values: updatedValues }] };
+        }),
+      );
+    } catch {
+      showError('Could not read selected variant images.');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const removeEditingVariantImage = (productId: string, variantIndex: number, imageIndex: number) => {
+    setProducts((prev) =>
+      prev.map((row) => {
+        if (row.id !== productId) return row;
+        const groups = Array.isArray(row.variantGroups) ? row.variantGroups : [];
+        const firstGroup = groups[0];
+        if (!firstGroup) return row;
+        const values = Array.isArray(firstGroup.values) ? firstGroup.values : [];
+        const updatedValues = values.map((variantRow, idx) => {
+          if (idx !== variantIndex) return variantRow;
+          const existingImages = Array.isArray(variantRow.images) ? variantRow.images : [];
+          return { ...variantRow, images: existingImages.filter((_, idxImage) => idxImage !== imageIndex) };
+        });
+        return { ...row, variantGroups: [{ ...firstGroup, values: updatedValues }] };
       }),
     );
   };
@@ -560,6 +679,47 @@ export function AdminDashboard() {
               <input className="px-3 py-2 border rounded-lg" placeholder="Discount Price (optional)" value={newProduct.discountPrice} onChange={(e) => setNewProduct((p) => ({ ...p, discountPrice: e.target.value }))} />
               <input className="px-3 py-2 border rounded-lg" type="file" accept="image/*" multiple onChange={handleNewProductImages} />
             </div>
+            <div className="border rounded-xl p-4 mb-4">
+              <p className="text-sm text-gray-700 mb-3">Variants (optional)</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <input
+                  className="px-3 py-2 border rounded-lg"
+                  placeholder="Variant Type (e.g. Size, Weight)"
+                  value={newProduct.variantType}
+                  onChange={(e) => setNewProduct((p) => ({ ...p, variantType: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                {newProduct.variants.map((variantRow, idx) => (
+                  <div key={`admin-new-variant-${idx}`} className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                    <input className="px-3 py-2 border rounded-lg" placeholder="Value" value={variantRow.value} onChange={(e) => setNewProduct((p) => ({ ...p, variants: p.variants.map((row, rowIdx) => rowIdx === idx ? { ...row, value: e.target.value } : row) }))} />
+                    <input className="px-3 py-2 border rounded-lg" placeholder="Price" value={variantRow.price} onChange={(e) => setNewProduct((p) => ({ ...p, variants: p.variants.map((row, rowIdx) => rowIdx === idx ? { ...row, price: e.target.value } : row) }))} />
+                    <input className="px-3 py-2 border rounded-lg" placeholder="Discount Price" value={variantRow.discountPrice} onChange={(e) => setNewProduct((p) => ({ ...p, variants: p.variants.map((row, rowIdx) => rowIdx === idx ? { ...row, discountPrice: e.target.value } : row) }))} />
+                    <input className="px-3 py-2 border rounded-lg" placeholder="Stock" value={variantRow.stock} onChange={(e) => setNewProduct((p) => ({ ...p, variants: p.variants.map((row, rowIdx) => rowIdx === idx ? { ...row, stock: e.target.value } : row) }))} />
+                    <div className="flex gap-2">
+                      <input className="flex-1 px-3 py-2 border rounded-lg" placeholder="SKU (optional)" value={variantRow.sku} onChange={(e) => setNewProduct((p) => ({ ...p, variants: p.variants.map((row, rowIdx) => rowIdx === idx ? { ...row, sku: e.target.value } : row) }))} />
+                      <button className="px-3 py-2 border rounded-lg" onClick={() => setNewProduct((p) => ({ ...p, variants: p.variants.filter((_, rowIdx) => rowIdx !== idx) }))}>x</button>
+                    </div>
+                    <div className="md:col-span-5">
+                      <input className="px-3 py-2 border rounded-lg w-full" type="file" accept="image/*" multiple onChange={(e) => addNewVariantImages(idx, e)} />
+                      {!!(variantRow.images || []).length && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {(variantRow.images || []).map((image, imageIdx) => (
+                            <button key={`${image}-${imageIdx}`} className="relative" onClick={() => removeNewVariantImage(idx, imageIdx)}>
+                              <img src={image} alt={`Variant ${idx + 1} image ${imageIdx + 1}`} className="w-14 h-14 object-cover rounded-lg border" />
+                              <span className="absolute -top-1 -right-1 bg-black text-white w-5 h-5 rounded-full text-xs">x</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button className="mt-3 px-3 py-2 border rounded-lg text-sm" onClick={() => setNewProduct((p) => ({ ...p, variants: [...p.variants, blankVariantRow()] }))}>
+                + Add Variant Value
+              </button>
+            </div>
             {!!newProduct.images.length && (
               <div className="flex flex-wrap gap-2 mb-3">
                 {newProduct.images.map((image, idx) => (
@@ -591,6 +751,167 @@ export function AdminDashboard() {
                           ))}
                         </select>
                         <textarea className="md:col-span-4 px-3 py-2 border rounded-lg" value={product.description} onChange={(e) => setProducts((prev) => prev.map((row) => row.id === product.id ? { ...row, description: e.target.value } : row))} />
+                        <div className="md:col-span-4 border rounded-xl p-4">
+                          <p className="text-sm text-gray-700 mb-3">Variants (optional)</p>
+                          <input
+                            className="px-3 py-2 border rounded-lg w-full mb-3"
+                            placeholder="Variant Type (e.g. Size, Weight)"
+                            value={String((Array.isArray(product.variantGroups) ? product.variantGroups[0]?.type : '') || '')}
+                            onChange={(e) =>
+                              setProducts((prev) =>
+                                prev.map((row) => {
+                                  if (row.id !== product.id) return row;
+                                  const currentGroup = Array.isArray(row.variantGroups) ? row.variantGroups[0] : undefined;
+                                  return {
+                                    ...row,
+                                    variantGroups: [{ type: e.target.value, values: Array.isArray(currentGroup?.values) ? currentGroup.values : [] }],
+                                  };
+                                }),
+                              )
+                            }
+                          />
+                          <div className="space-y-2">
+                            {(Array.isArray(product.variantGroups) ? product.variantGroups[0]?.values || [] : []).map((variantRow, variantIndex) => (
+                              <div key={`${product.id}-variant-${variantIndex}`} className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                                <input
+                                  className="px-3 py-2 border rounded-lg"
+                                  placeholder="Value"
+                                  value={String(variantRow.value || '')}
+                                  onChange={(e) =>
+                                    setProducts((prev) =>
+                                      prev.map((row) => {
+                                        if (row.id !== product.id) return row;
+                                        const currentGroup = Array.isArray(row.variantGroups) ? row.variantGroups[0] : undefined;
+                                        if (!currentGroup) return row;
+                                        const values = Array.isArray(currentGroup.values) ? currentGroup.values : [];
+                                        return { ...row, variantGroups: [{ ...currentGroup, values: values.map((valueRow, idx) => idx === variantIndex ? { ...valueRow, value: e.target.value } : valueRow) }] };
+                                      }),
+                                    )
+                                  }
+                                />
+                                <input
+                                  className="px-3 py-2 border rounded-lg"
+                                  placeholder="Price"
+                                  value={String(variantRow.price ?? '')}
+                                  onChange={(e) =>
+                                    setProducts((prev) =>
+                                      prev.map((row) => {
+                                        if (row.id !== product.id) return row;
+                                        const currentGroup = Array.isArray(row.variantGroups) ? row.variantGroups[0] : undefined;
+                                        if (!currentGroup) return row;
+                                        const values = Array.isArray(currentGroup.values) ? currentGroup.values : [];
+                                        return { ...row, variantGroups: [{ ...currentGroup, values: values.map((valueRow, idx) => idx === variantIndex ? { ...valueRow, price: Number(e.target.value || 0) } : valueRow) }] };
+                                      }),
+                                    )
+                                  }
+                                />
+                                <input
+                                  className="px-3 py-2 border rounded-lg"
+                                  placeholder="Discount Price"
+                                  value={variantRow.discountPrice === null || variantRow.discountPrice === undefined ? '' : String(variantRow.discountPrice)}
+                                  onChange={(e) =>
+                                    setProducts((prev) =>
+                                      prev.map((row) => {
+                                        if (row.id !== product.id) return row;
+                                        const currentGroup = Array.isArray(row.variantGroups) ? row.variantGroups[0] : undefined;
+                                        if (!currentGroup) return row;
+                                        const values = Array.isArray(currentGroup.values) ? currentGroup.values : [];
+                                        return { ...row, variantGroups: [{ ...currentGroup, values: values.map((valueRow, idx) => idx === variantIndex ? { ...valueRow, discountPrice: e.target.value === '' ? null : Number(e.target.value || 0) } : valueRow) }] };
+                                      }),
+                                    )
+                                  }
+                                />
+                                <input
+                                  className="px-3 py-2 border rounded-lg"
+                                  placeholder="Stock"
+                                  value={String(variantRow.stock ?? '')}
+                                  onChange={(e) =>
+                                    setProducts((prev) =>
+                                      prev.map((row) => {
+                                        if (row.id !== product.id) return row;
+                                        const currentGroup = Array.isArray(row.variantGroups) ? row.variantGroups[0] : undefined;
+                                        if (!currentGroup) return row;
+                                        const values = Array.isArray(currentGroup.values) ? currentGroup.values : [];
+                                        return { ...row, variantGroups: [{ ...currentGroup, values: values.map((valueRow, idx) => idx === variantIndex ? { ...valueRow, stock: Number(e.target.value || 0) } : valueRow) }] };
+                                      }),
+                                    )
+                                  }
+                                />
+                                <div className="flex gap-2">
+                                  <input
+                                    className="flex-1 px-3 py-2 border rounded-lg"
+                                    placeholder="SKU (optional)"
+                                    value={String(variantRow.sku || '')}
+                                    onChange={(e) =>
+                                      setProducts((prev) =>
+                                        prev.map((row) => {
+                                          if (row.id !== product.id) return row;
+                                          const currentGroup = Array.isArray(row.variantGroups) ? row.variantGroups[0] : undefined;
+                                          if (!currentGroup) return row;
+                                          const values = Array.isArray(currentGroup.values) ? currentGroup.values : [];
+                                          return { ...row, variantGroups: [{ ...currentGroup, values: values.map((valueRow, idx) => idx === variantIndex ? { ...valueRow, sku: e.target.value } : valueRow) }] };
+                                        }),
+                                      )
+                                    }
+                                  />
+                                  <button
+                                    className="px-3 py-2 border rounded-lg"
+                                    onClick={() =>
+                                      setProducts((prev) =>
+                                        prev.map((row) => {
+                                          if (row.id !== product.id) return row;
+                                          const currentGroup = Array.isArray(row.variantGroups) ? row.variantGroups[0] : undefined;
+                                          if (!currentGroup) return row;
+                                          const values = Array.isArray(currentGroup.values) ? currentGroup.values : [];
+                                          return { ...row, variantGroups: [{ ...currentGroup, values: values.filter((_, idx) => idx !== variantIndex) }] };
+                                        }),
+                                      )
+                                    }
+                                  >
+                                    x
+                                  </button>
+                                </div>
+                                <div className="md:col-span-5">
+                                  <input className="px-3 py-2 border rounded-lg w-full" type="file" accept="image/*" multiple onChange={(e) => addEditingVariantImages(product.id, variantIndex, e)} />
+                                  {!!(Array.isArray(variantRow.images) ? variantRow.images : []).length && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      {(Array.isArray(variantRow.images) ? variantRow.images : []).map((image, imageIdx) => (
+                                        <button key={`${product.id}-${variantIndex}-${imageIdx}`} className="relative" onClick={() => removeEditingVariantImage(product.id, variantIndex, imageIdx)}>
+                                          <img src={image} alt={`Variant image ${imageIdx + 1}`} className="w-14 h-14 object-cover rounded-lg border" />
+                                          <span className="absolute -top-1 -right-1 bg-black text-white w-5 h-5 rounded-full text-xs">x</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            className="mt-3 px-3 py-2 border rounded-lg text-sm"
+                            onClick={() =>
+                              setProducts((prev) =>
+                                prev.map((row) => {
+                                  if (row.id !== product.id) return row;
+                                  const currentGroup = Array.isArray(row.variantGroups) ? row.variantGroups[0] : undefined;
+                                  const nextGroup = currentGroup || { type: '', values: [] };
+                                  return {
+                                    ...row,
+                                    variantGroups: [{
+                                      ...nextGroup,
+                                      values: [
+                                        ...(Array.isArray(nextGroup.values) ? nextGroup.values : []),
+                                        { value: '', price: 0, discountPrice: null, stock: Number(product.stock || 0), sku: '', images: [] },
+                                      ],
+                                    }],
+                                  };
+                                }),
+                              )
+                            }
+                          >
+                            + Add Variant Value
+                          </button>
+                        </div>
                         <input className="md:col-span-4 px-3 py-2 border rounded-lg" type="file" accept="image/*" multiple onChange={(e) => handleEditProductImages(product.id, e)} />
                         <div className="md:col-span-4 flex flex-wrap gap-2">
                           {(Array.isArray(product.images) ? product.images : []).map((image, idx) => (
@@ -766,6 +1087,9 @@ export function AdminDashboard() {
                               {item.selectedVariant ? (
                                 <p className="text-xs text-blue-700">
                                   Variant: {item.selectedVariant.title || item.selectedVariant.sku || item.selectedVariant.id}
+                                  {(item.selectedVariant as any).type && (item.selectedVariant as any).value
+                                    ? ` (${(item.selectedVariant as any).type}: ${(item.selectedVariant as any).value})`
+                                    : ''}
                                 </p>
                               ) : item.variantOptions.length ? (
                                 <p className="text-xs text-amber-700">

@@ -20,12 +20,17 @@ interface HomeProps {
 const WISHLIST_KEY = 'marketHubWishlist';
 
 export function Home({ onNavigate, onCartChange }: HomeProps) {
+  const CATEGORY_PREVIEW_COUNT = 5;
+  const PRODUCT_PREVIEW_COUNT = 4;
   const [products, setProducts] = useState<FrontendProduct[]>([]);
   const [categories, setCategories] = useState<FrontendCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [promoBannerImage, setPromoBannerImage] = useState('');
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [showAllNewArrivals, setShowAllNewArrivals] = useState(false);
+  const [showAllFeatured, setShowAllFeatured] = useState(false);
 
   useEffect(() => {
     Promise.all([getProducts(), getCategories()])
@@ -78,16 +83,42 @@ export function Home({ onNavigate, onCartChange }: HomeProps) {
     localStorage.setItem(WISHLIST_KEY, JSON.stringify(next));
   };
 
-  const newArrivals = useMemo(() => products.slice(0, 4), [products]);
+  const sortedCategories = useMemo(() => {
+    const productCounts = new Map<string, number>();
+    for (const product of products) {
+      const key = String(product.category || '').trim().toLowerCase();
+      if (!key) continue;
+      productCounts.set(key, (productCounts.get(key) || 0) + 1);
+    }
+
+    return [...categories].sort((a, b) => {
+      const aCount = productCounts.get(String(a.name || '').trim().toLowerCase()) || 0;
+      const bCount = productCounts.get(String(b.name || '').trim().toLowerCase()) || 0;
+      if (aCount !== bCount) return bCount - aCount;
+      return a.name.localeCompare(b.name);
+    });
+  }, [categories, products]);
+
+  const visibleCategories = useMemo(
+    () => (showAllCategories ? sortedCategories : sortedCategories.slice(0, CATEGORY_PREVIEW_COUNT)),
+    [showAllCategories, sortedCategories],
+  );
+  const newArrivals = useMemo(
+    () => (showAllNewArrivals ? products : products.slice(0, PRODUCT_PREVIEW_COUNT)),
+    [products, showAllNewArrivals],
+  );
   const flashSaleProducts = useMemo(
     () => [...products].sort((a, b) => (b.discount || 0) - (a.discount || 0)).slice(0, 4),
     [products],
   );
   const featuredProducts = useMemo(
     () => [...products]
-      .sort((a, b) => ((b.discount || 0) + b.price * 0.001) - ((a.discount || 0) + a.price * 0.001))
-      .slice(0, 8),
+      .sort((a, b) => ((b.discount || 0) + b.price * 0.001) - ((a.discount || 0) + a.price * 0.001)),
     [products],
+  );
+  const visibleFeaturedProducts = useMemo(
+    () => (showAllFeatured ? featuredProducts : featuredProducts.slice(0, PRODUCT_PREVIEW_COUNT)),
+    [featuredProducts, showAllFeatured],
   );
 
   return (
@@ -138,20 +169,22 @@ export function Home({ onNavigate, onCartChange }: HomeProps) {
       <section className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 lg:py-16">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8">
           <h2 className="text-2xl sm:text-3xl text-gray-900">Shop by Category</h2>
-          <button
-            onClick={() => onNavigate('products', {})}
-            className="text-[#16A34A] hover:text-[#15803D] flex items-center gap-2"
-          >
-            View All
-            <ChevronRight className="w-5 h-5" />
-          </button>
+          {sortedCategories.length > CATEGORY_PREVIEW_COUNT && (
+            <button
+              onClick={() => setShowAllCategories((prev) => !prev)}
+              className="text-[#16A34A] hover:text-[#15803D] flex items-center gap-2"
+            >
+              {showAllCategories ? 'Show Less' : 'View All'}
+              <ChevronRight className={`w-5 h-5 transition-transform ${showAllCategories ? 'rotate-90' : ''}`} />
+            </button>
+          )}
         </div>
 
         {loading ? (
           <p className="text-gray-600">Loading categories...</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-4 sm:gap-6">
-            {categories.map((category) => (
+            {visibleCategories.map((category) => (
               <button key={category.id} onClick={() => onNavigate('products', { category: category.name })} className="group">
                 <div className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-all">
                   <img
@@ -170,13 +203,15 @@ export function Home({ onNavigate, onCartChange }: HomeProps) {
       <section className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 lg:py-16">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8">
           <h2 className="text-2xl sm:text-3xl text-gray-900">New Arrivals</h2>
-          <button
-            onClick={() => onNavigate('products', {})}
-            className="text-[#16A34A] hover:text-[#15803D] flex items-center gap-2"
-          >
-            View All
-            <ChevronRight className="w-5 h-5" />
-          </button>
+          {products.length > PRODUCT_PREVIEW_COUNT && (
+            <button
+              onClick={() => setShowAllNewArrivals((prev) => !prev)}
+              className="text-[#16A34A] hover:text-[#15803D] flex items-center gap-2"
+            >
+              {showAllNewArrivals ? 'Show Less' : 'View All'}
+              <ChevronRight className={`w-5 h-5 transition-transform ${showAllNewArrivals ? 'rotate-90' : ''}`} />
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -240,20 +275,22 @@ export function Home({ onNavigate, onCartChange }: HomeProps) {
       <section className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 lg:py-16">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8">
           <h2 className="text-2xl sm:text-3xl text-gray-900">Featured Products</h2>
-          <button
-            onClick={() => onNavigate('products', {})}
-            className="text-[#16A34A] hover:text-[#15803D] flex items-center gap-2"
-          >
-            View All
-            <ChevronRight className="w-5 h-5" />
-          </button>
+          {featuredProducts.length > PRODUCT_PREVIEW_COUNT && (
+            <button
+              onClick={() => setShowAllFeatured((prev) => !prev)}
+              className="text-[#16A34A] hover:text-[#15803D] flex items-center gap-2"
+            >
+              {showAllFeatured ? 'Show Less' : 'View All'}
+              <ChevronRight className={`w-5 h-5 transition-transform ${showAllFeatured ? 'rotate-90' : ''}`} />
+            </button>
+          )}
         </div>
 
         {loading ? (
           <p className="text-gray-600">Loading products...</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            {featuredProducts.map((product) => (
+            {visibleFeaturedProducts.map((product) => (
               <div key={product.id} onClick={() => onNavigate('product-details', product)}>
                 <ProductCard
                   {...product}

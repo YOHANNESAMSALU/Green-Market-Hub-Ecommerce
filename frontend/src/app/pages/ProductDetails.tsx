@@ -18,8 +18,7 @@ export function ProductDetails({ product, onNavigate, onCartChange }: ProductDet
   const [currentProduct, setCurrentProduct] = useState<FrontendProduct | null>(product || null);
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const [selectedSize, setSelectedSize] = useState('M');
-  const [selectedColor, setSelectedColor] = useState('Black');
+  const [selectedVariantValues, setSelectedVariantValues] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState('description');
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [message, setMessage] = useState('');
@@ -44,6 +43,19 @@ export function ProductDetails({ product, onNavigate, onCartChange }: ProductDet
   }, [allProducts, currentProduct]);
 
   useEffect(() => {
+    const groups = currentProduct?.variantGroups || [];
+    if (!groups.length) {
+      setSelectedVariantValues({});
+      return;
+    }
+    const defaults = groups.reduce((acc, group) => {
+      acc[group.type] = group.values?.[0]?.value || '';
+      return acc;
+    }, {} as Record<string, string>);
+    setSelectedVariantValues(defaults);
+  }, [currentProduct?.id]);
+
+  useEffect(() => {
     const stored = localStorage.getItem(WISHLIST_KEY);
     if (!stored) return;
     try {
@@ -61,6 +73,30 @@ export function ProductDetails({ product, onNavigate, onCartChange }: ProductDet
     return allProducts.filter((p) => p.id !== currentProduct.id).slice(0, 4);
   }, [allProducts, currentProduct]);
 
+  const primaryVariant = useMemo(() => {
+    const group = currentProduct?.variantGroups?.[0];
+    if (!group) return null;
+    const selectedValue = selectedVariantValues[group.type];
+    return group.values.find((value) => value.value === selectedValue) || group.values[0] || null;
+  }, [currentProduct, selectedVariantValues]);
+
+  const selectedUnitPrice = Number(
+    primaryVariant
+      ? (primaryVariant.discountPrice ?? primaryVariant.price)
+      : currentProduct?.price || 0,
+  );
+  const selectedBasePrice = Number(primaryVariant?.price ?? currentProduct?.originalPrice ?? currentProduct?.price ?? 0);
+  const selectedStock = Number(primaryVariant?.stock ?? currentProduct?.stock ?? 0);
+  const displayedImages = useMemo(() => {
+    const variantImages = Array.isArray(primaryVariant?.images) ? primaryVariant.images : [];
+    if (variantImages.length) return variantImages;
+    return currentProduct.images?.length ? currentProduct.images : [currentProduct.image];
+  }, [currentProduct, primaryVariant]);
+
+  useEffect(() => {
+    setSelectedImage(0);
+  }, [primaryVariant?.id, currentProduct.id]);
+
   if (!currentProduct) {
     return <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-12 text-gray-600">Loading product...</div>;
   }
@@ -72,7 +108,27 @@ export function ProductDetails({ product, onNavigate, onCartChange }: ProductDet
 
   const addCurrentProductToCart = async () => {
     try {
-      await addToCart(currentProduct.id, quantity);
+      const selections = Object.entries(selectedVariantValues)
+        .filter(([, value]) => value)
+        .map(([type, value]) => ({ type, value }));
+      await addToCart(currentProduct.id, quantity, undefined, primaryVariant ? {
+        id: primaryVariant.id,
+        sku: primaryVariant.sku,
+        title: primaryVariant.title || `${currentProduct.variantGroups?.[0]?.type || 'Variant'}: ${primaryVariant.value}`,
+        type: currentProduct.variantGroups?.[0]?.type || 'Variant',
+        value: primaryVariant.value,
+        price: Number(primaryVariant.price || 0),
+        discountPrice:
+          primaryVariant.discountPrice === null || primaryVariant.discountPrice === undefined
+            ? null
+            : Number(primaryVariant.discountPrice),
+        unitPrice: selectedUnitPrice,
+        attributes: {
+          type: currentProduct.variantGroups?.[0]?.type || 'Variant',
+          value: primaryVariant.value,
+          selections,
+        },
+      } : null);
       onCartChange?.();
       return true;
     } catch {
@@ -126,16 +182,18 @@ export function ProductDetails({ product, onNavigate, onCartChange }: ProductDet
           <div>
             <div className="bg-white rounded-2xl shadow-sm p-4 sm:p-6 lg:p-8 mb-4">
               <img
-                src={currentProduct.images?.[selectedImage] || currentProduct.image}
+                src={displayedImages[selectedImage] || displayedImages[0] || currentProduct.image}
                 alt={currentProduct.name}
                 className="w-full aspect-square object-cover rounded-xl"
               />
             </div>
             <div className="grid grid-cols-4 gap-2 sm:gap-4">
-              {(currentProduct.images || [currentProduct.image]).map((img: string, idx: number) => (
+              {displayedImages.map((img: string, idx: number) => (
                 <button
                   key={idx}
                   onClick={() => setSelectedImage(idx)}
+                  onMouseEnter={() => setSelectedImage(idx)}
+                  onFocus={() => setSelectedImage(idx)}
                   className={`bg-white rounded-xl shadow-sm p-2 ${selectedImage === idx ? 'ring-2 ring-[#16A34A]' : ''}`}
                 >
                   <img src={img} alt={`Product ${idx + 1}`} className="w-full aspect-square object-cover rounded-lg" />
@@ -161,54 +219,43 @@ export function ProductDetails({ product, onNavigate, onCartChange }: ProductDet
               </div>
 
               <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-6">
-                <span className="text-3xl sm:text-4xl text-[#16A34A]">ETB {currentProduct.price.toLocaleString()}</span>
-                {currentProduct.originalPrice && (
+                <span className="text-3xl sm:text-4xl text-[#16A34A]">ETB {selectedUnitPrice.toLocaleString()}</span>
+                {selectedBasePrice > selectedUnitPrice && (
                   <>
-                    <span className="text-xl sm:text-2xl text-gray-400 line-through">ETB {currentProduct.originalPrice.toLocaleString()}</span>
-                    <Badge variant="discount">-{currentProduct.discount}%</Badge>
+                    <span className="text-xl sm:text-2xl text-gray-400 line-through">ETB {selectedBasePrice.toLocaleString()}</span>
+                    <Badge variant="discount">
+                      -{Math.round(((selectedBasePrice - selectedUnitPrice) / selectedBasePrice) * 100)}%
+                    </Badge>
                   </>
                 )}
               </div>
 
               <div className="mb-6">
-                <Badge variant="success">In Stock ({currentProduct.stock} available)</Badge>
+                <Badge variant="success">In Stock ({selectedStock} available)</Badge>
               </div>
 
               <p className="text-gray-700 mb-6">{currentProduct.description}</p>
 
-              <div className="mb-6">
-                <label className="block text-gray-900 mb-3">Size</label>
-                <div className="flex flex-wrap gap-3">
-                  {['S', 'M', 'L', 'XL'].map((size) => (
-                    <button
-                      key={size}
-                      onClick={() => setSelectedSize(size)}
-                      className={`px-6 py-2 border-2 rounded-xl transition-colors ${
-                        selectedSize === size ? 'border-[#16A34A] bg-[#DCFCE7] text-[#16A34A]' : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                    >
-                      {size}
-                    </button>
-                  ))}
+              {(currentProduct.variantGroups || []).map((group) => (
+                <div className="mb-6" key={group.type}>
+                  <label className="block text-gray-900 mb-3">{group.type}</label>
+                  <div className="flex flex-wrap gap-3">
+                    {group.values.map((valueRow) => (
+                      <button
+                        key={`${group.type}-${valueRow.value}`}
+                        onClick={() => setSelectedVariantValues((prev) => ({ ...prev, [group.type]: valueRow.value }))}
+                        className={`px-6 py-2 border-2 rounded-xl transition-colors ${
+                          selectedVariantValues[group.type] === valueRow.value
+                            ? 'border-[#16A34A] bg-[#DCFCE7] text-[#16A34A]'
+                            : 'border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
+                        {valueRow.value}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-
-              <div className="mb-6">
-                <label className="block text-gray-900 mb-3">Color</label>
-                <div className="flex flex-wrap gap-3">
-                  {['Black', 'White', 'Blue', 'Red'].map((color) => (
-                    <button
-                      key={color}
-                      onClick={() => setSelectedColor(color)}
-                      className={`px-6 py-2 border-2 rounded-xl transition-colors ${
-                        selectedColor === color ? 'border-[#16A34A] bg-[#DCFCE7] text-[#16A34A]' : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                    >
-                      {color}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              ))}
 
               <div className="mb-8">
                 <label className="block text-gray-900 mb-3">Quantity</label>
@@ -221,7 +268,7 @@ export function ProductDetails({ product, onNavigate, onCartChange }: ProductDet
                   </button>
                   <span className="text-xl w-12 text-center">{quantity}</span>
                   <button
-                    onClick={() => setQuantity(Math.min(currentProduct.stock, quantity + 1))}
+                    onClick={() => setQuantity(Math.min(selectedStock || 1, quantity + 1))}
                     className="w-12 h-12 flex items-center justify-center border-2 border-gray-300 rounded-xl hover:border-[#16A34A]"
                   >
                     <Plus className="w-5 h-5" />

@@ -1,0 +1,143 @@
+CREATE DATABASE IF NOT EXISTS ecommerce;
+use ecommerce;
+SELECT DATABASE();
+-- DROP database IF EXISTS ecommerce;
+
+-- -- Disable checks temporarily to ensure a smooth wipe
+-- SET FOREIGN_KEY_CHECKS = 0;
+
+-- DROP TABLE IF EXISTS Review;
+-- DROP TABLE IF EXISTS Address;
+-- DROP TABLE IF EXISTS Payment;
+-- DROP TABLE IF EXISTS OrderItem;
+-- DROP TABLE IF EXISTS `Order`;
+-- DROP TABLE IF EXISTS CartItem;
+-- DROP TABLE IF EXISTS ProductVariant;
+-- DROP TABLE IF EXISTS Product;
+-- DROP TABLE IF EXISTS Category;
+-- DROP TABLE IF EXISTS User;
+
+-- Re-enable checks
+SET FOREIGN_KEY_CHECKS = 1;
+
+
+CREATE TABLE User (
+  id BINARY(16) PRIMARY KEY DEFAULT (UUID_TO_BIN(UUID())),
+  name TEXT NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password TEXT,
+  role ENUM('CUSTOMER','SELLER','ADMIN') DEFAULT 'CUSTOMER',
+  phone TEXT,
+  image TEXT,
+  isApproved TINYINT(1) DEFAULT 0,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE Category (
+  id BINARY(16) PRIMARY KEY DEFAULT (UUID_TO_BIN(UUID())),
+  name TEXT NOT NULL,
+  parentId BINARY(16),
+  image TEXT,
+  FOREIGN KEY (parentId) REFERENCES Category(id) ON DELETE SET NULL
+);
+
+CREATE TABLE Product (
+  id BINARY(16) PRIMARY KEY DEFAULT (UUID_TO_BIN(UUID())),
+  name TEXT NOT NULL,
+  description TEXT,
+  price DOUBLE NOT NULL,
+  discountPrice DOUBLE,
+  stock INT DEFAULT 0,
+  sku VARCHAR(255) UNIQUE,
+  images JSON,
+  brand TEXT,
+  weight DOUBLE,
+  sellerId BINARY(16),
+  categoryId BINARY(16),
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (sellerId) REFERENCES User(id) ON DELETE CASCADE,
+  FOREIGN KEY (categoryId) REFERENCES Category(id)
+);
+
+
+CREATE TABLE ProductVariant (
+  id BINARY(16) PRIMARY KEY DEFAULT (UUID_TO_BIN(UUID())),
+  product_id BINARY(16),
+  sku VARCHAR(255) UNIQUE,
+  title TEXT,
+  price DOUBLE NOT NULL,
+  discount_price DOUBLE,
+  stock INT DEFAULT 0,
+  attributes JSON,
+  images JSON,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (product_id) REFERENCES Product(id) ON DELETE CASCADE
+);
+
+CREATE TABLE CartItem (
+  id BINARY(16) PRIMARY KEY DEFAULT (UUID_TO_BIN(UUID())),
+  userId BINARY(16),
+  productId BINARY(16),
+  quantity INT NOT NULL,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(userId, productId),
+  FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE,
+  FOREIGN KEY (productId) REFERENCES Product(id) ON DELETE CASCADE
+);
+
+CREATE TABLE `Order` (
+  id BINARY(16) PRIMARY KEY DEFAULT (UUID_TO_BIN(UUID())),
+  userId BINARY(16),
+  totalAmount DOUBLE NOT NULL,
+  status ENUM('PENDING','CONFIRMED','PROCESSING','SHIPPED','DELIVERED','CANCELLED','RETURNED') DEFAULT 'PENDING',
+  shippingCost DOUBLE DEFAULT 0,
+  trackingNumber TEXT,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES User(id));
+
+CREATE TABLE OrderItem (
+  id BINARY(16) PRIMARY KEY DEFAULT (UUID_TO_BIN(UUID())),
+  orderId BINARY(16),
+  productId BINARY(16),
+  quantity INT,
+  price DOUBLE,
+  FOREIGN KEY (orderId) REFERENCES `Order`(id) ON DELETE CASCADE,
+  FOREIGN KEY (productId) REFERENCES Product(id)
+);
+
+CREATE TABLE Payment (
+  id BINARY(16) PRIMARY KEY DEFAULT (UUID_TO_BIN(UUID())),
+  orderId BINARY(16),
+  amount DOUBLE,
+  method TEXT,
+  status ENUM('PENDING','SUCCESS','FAILED') DEFAULT 'PENDING',
+  transactionId TEXT,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (orderId) REFERENCES `Order`(id) ON DELETE CASCADE
+);
+
+CREATE TABLE Address (
+  id BINARY(16) PRIMARY KEY DEFAULT (UUID_TO_BIN(UUID())),
+  userId BINARY(16),
+  fullName TEXT,
+  phone TEXT,
+  city TEXT,
+  subCity TEXT,
+  region TEXT,
+  details TEXT,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
+);
+
+CREATE TABLE Review (
+  id BINARY(16) PRIMARY KEY DEFAULT (UUID_TO_BIN(UUID())),
+  userId BINARY(16),
+  productId BINARY(16),
+  rating INT,
+  comment TEXT,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES User(id),
+  FOREIGN KEY (productId) REFERENCES Product(id)
+);

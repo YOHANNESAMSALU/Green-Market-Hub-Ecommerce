@@ -39,6 +39,23 @@ export interface AdminProduct {
   categoryId: string;
   categoryName?: string;
   sellerName?: string;
+  variantGroups?: ProductVariantGroup[];
+}
+
+export interface ProductVariantValue {
+  id?: string;
+  value: string;
+  title?: string;
+  sku?: string;
+  price: number;
+  discountPrice?: number | null;
+  stock?: number;
+  images?: string[];
+}
+
+export interface ProductVariantGroup {
+  type: string;
+  values: ProductVariantValue[];
 }
 
 export interface AdminUserRow {
@@ -290,6 +307,7 @@ export async function createAdminProduct(input: {
   brand?: string;
   sellerId?: string;
   categoryId: string;
+  variantGroups?: ProductVariantGroup[];
 }) {
   return apiSend<{ ok: boolean; id: string }>('/admin/products', 'POST', input);
 }
@@ -307,6 +325,7 @@ export async function updateAdminProduct(
     brand: string;
     sellerId: string;
     categoryId: string;
+    variantGroups: ProductVariantGroup[];
   }>,
 ) {
   return apiSend<{ ok: boolean }>(`/admin/products/${encodeURIComponent(productId)}`, 'PATCH', input);

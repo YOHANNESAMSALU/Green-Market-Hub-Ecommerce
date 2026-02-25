@@ -189,6 +189,169 @@ const parseImageArray = (value) => {
   return [];
 };
 
+const parseJsonObject = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const normalizeVariantGroupsInput = (input, fallbackPrice, fallbackDiscountPrice, fallbackStock) => {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((group) => {
+      const type = String(group?.type || '').trim();
+      const values = Array.isArray(group?.values) ? group.values : [];
+      if (!type || !values.length) return null;
+      const normalizedValues = values
+        .map((valueRow) => {
+          const value = String(valueRow?.value || valueRow?.title || '').trim();
+          if (!value) return null;
+          const priceRaw = Number(valueRow?.price);
+          const discountRaw = valueRow?.discountPrice;
+          const stockRaw = Number(valueRow?.stock);
+          const price = Number.isFinite(priceRaw) ? priceRaw : Number(fallbackPrice || 0);
+          const discountPrice =
+            discountRaw === '' || discountRaw === null || discountRaw === undefined
+              ? (fallbackDiscountPrice ?? null)
+              : Number(discountRaw);
+          const stock = Number.isFinite(stockRaw) ? stockRaw : Number(fallbackStock || 0);
+          return {
+            value,
+            title: String(valueRow?.title || `${type}: ${value}`).trim(),
+            sku: String(valueRow?.sku || '').trim(),
+            price,
+            discountPrice: Number.isFinite(discountPrice) ? discountPrice : null,
+            stock,
+            images: Array.isArray(valueRow?.images) ? valueRow.images.filter((img) => typeof img === 'string') : [],
+          };
+        })
+        .filter(Boolean);
+      if (!normalizedValues.length) return null;
+      return { type, values: normalizedValues };
+    })
+    .filter(Boolean);
+};
+
+const groupVariantRows = (variantRows) => {
+  const byProductId = new Map();
+  for (const row of variantRows) {
+    const productId = String(row.productId || '');
+    if (!productId) continue;
+    const attributes = parseJsonObject(row.attributes) || {};
+    const variant = {
+      id: String(row.id || ''),
+      sku: String(row.sku || ''),
+      title: String(row.title || ''),
+      price: Number(row.price || 0),
+      discountPrice: row.discount_price === null || row.discount_price === undefined ? null : Number(row.discount_price),
+      stock: Number(row.stock || 0),
+      attributes,
+      images: parseImageArray(row.images),
+    };
+    const list = byProductId.get(productId) || [];
+    list.push(variant);
+    byProductId.set(productId, list);
+  }
+
+  const groupedByType = new Map();
+  for (const [productId, variants] of byProductId.entries()) {
+    const groupsMap = new Map();
+    for (const variant of variants) {
+      const type = String(variant.attributes?.type || 'Variant').trim() || 'Variant';
+      const value = String(variant.attributes?.value || variant.title || variant.sku || '').trim();
+      if (!value) continue;
+      const values = groupsMap.get(type) || [];
+      values.push({
+        id: variant.id,
+        value,
+        title: variant.title || `${type}: ${value}`,
+        sku: variant.sku,
+        price: variant.price,
+        discountPrice: variant.discountPrice,
+        stock: variant.stock,
+        images: variant.images,
+      });
+      groupsMap.set(type, values);
+    }
+    groupedByType.set(
+      productId,
+      Array.from(groupsMap.entries()).map(([type, values]) => ({ type, values })),
+    );
+  }
+  return { byProductId, groupedByType };
+};
+
+const fetchProductVariantsByProductIds = async (productIds) => {
+  const ids = Array.from(new Set((productIds || []).map((id) => String(id || '').trim()).filter(Boolean)));
+  if (!ids.length) return { byProductId: new Map(), groupedByType: new Map() };
+
+  const placeholders = ids.map(() => 'UUID_TO_BIN(?)').join(',');
+  const [variantRows] = await pool.execute(
+    `
+    SELECT
+      BIN_TO_UUID(id) AS id,
+      BIN_TO_UUID(product_id) AS productId,
+      sku,
+      title,
+      price,
+      discount_price,
+      stock,
+      attributes,
+      images
+    FROM ProductVariant
+    WHERE product_id IN (${placeholders})
+    `,
+    ids,
+  );
+  return groupVariantRows(variantRows);
+};
+
+const replaceProductVariants = async ({ productId, variantGroups, fallbackPrice, fallbackDiscountPrice, fallbackStock }) => {
+  const normalized = normalizeVariantGroupsInput(
+    variantGroups,
+    fallbackPrice,
+    fallbackDiscountPrice,
+    fallbackStock,
+  );
+
+  await pool.execute(`DELETE FROM ProductVariant WHERE product_id = UUID_TO_BIN(?)`, [productId]);
+  if (!normalized.length) return;
+
+  for (const group of normalized) {
+    for (const valueRow of group.values) {
+      const resolvedImages = await resolveImagesInput(valueRow.images, 'products');
+      const variantId = randomUUID();
+      const attributes = { type: group.type, value: valueRow.value };
+      await pool.execute(
+        `
+        INSERT INTO ProductVariant (
+          id, product_id, sku, title, price, discount_price, stock, attributes, images
+        )
+        VALUES (
+          UUID_TO_BIN(?), UUID_TO_BIN(?), ?, ?, ?, ?, ?, ?, ?
+        )
+        `,
+        [
+          variantId,
+          productId,
+          valueRow.sku || `VAR-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          valueRow.title,
+          Number(valueRow.price || 0),
+          valueRow.discountPrice === null ? null : Number(valueRow.discountPrice),
+          Number(valueRow.stock || 0),
+          JSON.stringify(attributes),
+          JSON.stringify(resolvedImages),
+        ],
+      );
+    }
+  }
+};
+
 const saveImageDataUrl = async (dataUrl, folder) => {
   if (!CLOUDINARY_CONFIG) {
     throw new Error('Cloudinary is not configured. Set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME/CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET.');
@@ -298,6 +461,56 @@ async function ensureTables() {
     )
     `,
   );
+
+  const execSafe = async (sql) => {
+    try {
+      await pool.execute(sql);
+    } catch (err) {
+      const code = Number(err?.errno || 0);
+      if ([1060, 1061, 1091, 1553].includes(code)) return;
+      throw err;
+    }
+  };
+
+  await execSafe(`
+    ALTER TABLE CartItem
+    ADD COLUMN variantSignature VARCHAR(191) NOT NULL DEFAULT ''
+  `);
+  await execSafe(`
+    ALTER TABLE CartItem
+    ADD COLUMN variantSnapshot JSON NULL
+  `);
+  await execSafe(`
+    ALTER TABLE OrderItem
+    ADD COLUMN variantSignature VARCHAR(191) NOT NULL DEFAULT ''
+  `);
+  await execSafe(`
+    ALTER TABLE OrderItem
+    ADD COLUMN variantSnapshot JSON NULL
+  `);
+
+  const [indexes] = await pool.execute(
+    `
+    SELECT INDEX_NAME, NON_UNIQUE, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS cols
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'CartItem'
+    GROUP BY INDEX_NAME, NON_UNIQUE
+    `,
+  );
+
+  for (const indexRow of indexes) {
+    if (Number(indexRow.NON_UNIQUE) !== 0) continue;
+    const cols = String(indexRow.cols || '');
+    if (cols === 'userId,productId') {
+      await execSafe(`ALTER TABLE CartItem DROP INDEX \`${String(indexRow.INDEX_NAME)}\``);
+    }
+  }
+
+  await execSafe(`
+    CREATE UNIQUE INDEX ux_cart_user_product_variant
+    ON CartItem (userId, productId, variantSignature)
+  `);
 }
 
 const verifyPassword = (plainPassword, storedHash) => {
@@ -774,6 +987,8 @@ app.get('/admin/delivery-orders', async (req, res) => {
         BIN_TO_UUID(oi.productId) AS productId,
         oi.quantity,
         oi.price,
+        oi.variantSignature,
+        oi.variantSnapshot,
         p.name AS productName,
         p.sku AS productSku,
         p.images AS productImages
@@ -839,6 +1054,16 @@ app.get('/admin/delivery-orders', async (req, res) => {
       const productId = String(row.productId || '');
       const variants = variantsByProductId.get(productId) || [];
       const unitPrice = Number(row.price || 0);
+      const variantSnapshot = (() => {
+        if (!row.variantSnapshot) return null;
+        if (typeof row.variantSnapshot === 'object') return row.variantSnapshot;
+        if (typeof row.variantSnapshot !== 'string') return null;
+        try {
+          return JSON.parse(row.variantSnapshot);
+        } catch {
+          return null;
+        }
+      })();
       const selectedVariant = variants.find((variant) =>
         Math.abs(Number(variant.discountPrice ?? variant.price ?? 0) - unitPrice) < 0.0001
         || Math.abs(Number(variant.price || 0) - unitPrice) < 0.0001
@@ -853,7 +1078,7 @@ app.get('/admin/delivery-orders', async (req, res) => {
         quantity: Number(row.quantity || 0),
         unitPrice,
         totalPrice: unitPrice * Number(row.quantity || 0),
-        selectedVariant,
+        selectedVariant: variantSnapshot || selectedVariant,
         variantOptions: variants,
       };
 
@@ -1031,7 +1256,19 @@ app.get('/admin/products', async (req, res) => {
       `,
     );
 
-    res.json(rows.map((row) => ({ ...row, images: parseImageArray(row.images) })));
+    const productIds = rows.map((row) => String(row.id));
+    const { byProductId, groupedByType } = await fetchProductVariantsByProductIds(productIds);
+    res.json(
+      rows.map((row) => {
+        const productId = String(row.id || '');
+        return {
+          ...row,
+          images: parseImageArray(row.images),
+          variants: byProductId.get(productId) || [],
+          variantGroups: groupedByType.get(productId) || [],
+        };
+      }),
+    );
   } catch (err) {
     console.error('Admin products error:', err);
     res.status(500).json({ error: 'Could not load products' });
@@ -1039,7 +1276,7 @@ app.get('/admin/products', async (req, res) => {
 });
 
 app.post('/admin/products', async (req, res) => {
-  const { name, description, price, discountPrice, stock, sku, images, brand, sellerId, categoryId } = req.body || {};
+  const { name, description, price, discountPrice, stock, sku, images, brand, sellerId, categoryId, variantGroups } = req.body || {};
   if (!name || !categoryId) return res.status(400).json({ error: 'name and categoryId are required' });
 
   try {
@@ -1082,6 +1319,15 @@ app.post('/admin/products', async (req, res) => {
       ],
     );
 
+    await replaceProductVariants({
+      productId: id,
+      variantGroups,
+      fallbackPrice: Number(price || 0),
+      fallbackDiscountPrice:
+        discountPrice !== undefined && discountPrice !== null && discountPrice !== '' ? Number(discountPrice) : null,
+      fallbackStock: Number(stock || 0),
+    });
+
     res.status(201).json({ ok: true, id });
   } catch (err) {
     console.error('Create product error:', err);
@@ -1091,7 +1337,7 @@ app.post('/admin/products', async (req, res) => {
 
 app.patch('/admin/products/:id', async (req, res) => {
   const { id } = req.params;
-  const { name, description, price, discountPrice, stock, sku, images, brand, sellerId, categoryId } = req.body || {};
+  const { name, description, price, discountPrice, stock, sku, images, brand, sellerId, categoryId, variantGroups } = req.body || {};
 
   try {
     const admin = await requireAdmin(req, res);
@@ -1134,6 +1380,20 @@ app.patch('/admin/products/:id', async (req, res) => {
     );
 
     if (!result.affectedRows) return res.status(404).json({ error: 'Product not found' });
+
+    if (variantGroups !== undefined) {
+      await replaceProductVariants({
+        productId: id,
+        variantGroups,
+        fallbackPrice: price !== undefined ? Number(price || 0) : 0,
+        fallbackDiscountPrice:
+          discountPrice !== undefined
+            ? (discountPrice === null || discountPrice === '' ? null : Number(discountPrice))
+            : null,
+        fallbackStock: stock !== undefined ? Number(stock || 0) : 0,
+      });
+    }
+
     res.json({ ok: true });
   } catch (err) {
     console.error('Update product error:', err);

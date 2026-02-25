@@ -101,6 +101,11 @@ export function Cart({ onNavigate, onCartChange }: CartProps) {
                           <div className="flex items-center gap-4 mb-4">
                             <Badge variant="info">Qty: {item.quantity}</Badge>
                           </div>
+                          {item.selectedVariant?.title && (
+                            <p className="text-sm text-blue-700 mb-3">
+                              Variant: {item.selectedVariant.title}
+                            </p>
+                          )}
 
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                             <div className="flex items-center gap-3">

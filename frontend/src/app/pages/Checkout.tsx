@@ -375,6 +375,9 @@ export function Checkout({ onNavigate, onCartChange }: CheckoutProps) {
                   <div key={item.id} className="flex justify-between">
                     <div>
                       <p className="text-gray-900">{item.name}</p>
+                      {item.selectedVariant?.title && (
+                        <p className="text-xs text-blue-700">{item.selectedVariant.title}</p>
+                      )}
                       <p className="text-sm text-gray-600">
                         Qty: {item.quantity}
                       </p>

@@ -26,6 +26,7 @@ export interface FrontendProduct {
   brand: string;
   seller: string;
   stock: number;
+  variantGroups?: ProductVariantGroup[];
 }
 
 export interface FrontendCartItem {
@@ -35,6 +36,35 @@ export interface FrontendCartItem {
   name: string;
   price: number;
   image: string;
+  selectedVariant?: FrontendSelectedVariant | null;
+}
+
+export interface FrontendSelectedVariant {
+  id?: string;
+  sku?: string;
+  title?: string;
+  type?: string;
+  value?: string;
+  price?: number;
+  discountPrice?: number | null;
+  unitPrice?: number;
+  attributes?: Record<string, unknown>;
+}
+
+export interface ProductVariantValue {
+  id?: string;
+  value: string;
+  title?: string;
+  sku?: string;
+  price: number;
+  discountPrice?: number | null;
+  stock?: number;
+  images?: string[];
+}
+
+export interface ProductVariantGroup {
+  type: string;
+  values: ProductVariantValue[];
 }
 
 export interface FrontendOrder {
@@ -78,6 +108,7 @@ export interface AdminProduct {
   categoryId: string;
   categoryName?: string;
   sellerName?: string;
+  variantGroups?: ProductVariantGroup[];
 }
 
 export interface AdminUserRow {
@@ -127,6 +158,39 @@ const parseImages = (value: unknown): string[] => {
   return [];
 };
 
+const parseVariantGroups = (value: unknown): ProductVariantGroup[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((group) => {
+      const type = String((group as any)?.type || '').trim();
+      const values = Array.isArray((group as any)?.values) ? (group as any).values : [];
+      if (!type || !values.length) return null;
+      const parsedValues = values
+        .map((row: any) => {
+          const variantValue = String(row?.value || row?.title || '').trim();
+          const price = Number(row?.price);
+          if (!variantValue || !Number.isFinite(price)) return null;
+          return {
+            id: row?.id ? String(row.id) : undefined,
+            value: variantValue,
+            title: row?.title ? String(row.title) : undefined,
+            sku: row?.sku ? String(row.sku) : undefined,
+            price,
+            discountPrice:
+              row?.discountPrice === null || row?.discountPrice === undefined || row?.discountPrice === ''
+                ? null
+                : Number(row.discountPrice),
+            stock: row?.stock === undefined ? undefined : Number(row.stock || 0),
+            images: parseImages(row?.images),
+          };
+        })
+        .filter(Boolean) as ProductVariantValue[];
+      if (!parsedValues.length) return null;
+      return { type, values: parsedValues };
+    })
+    .filter(Boolean) as ProductVariantGroup[];
+};
+
 export async function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -164,6 +228,7 @@ const mapProduct = (row: any): FrontendProduct => {
     brand: row.brand || '',
     seller: row.sellerName || 'Unknown Seller',
     stock: Number(row.stock || 0),
+    variantGroups: parseVariantGroups(row.variantGroups),
   };
 };
 
@@ -238,7 +303,7 @@ export async function getCartItems(userId?: string): Promise<FrontendCartItem[]>
   const rows = await apiGet<any[]>(`/cart-items${query}`);
 
   return rows.map((row) => {
-    const currentPrice = Number(row.discountPrice || row.price || 0);
+    const currentPrice = Number(row.price || row.discountPrice || 0);
     const images = parseImages(row.images);
 
     return {
@@ -248,15 +313,17 @@ export async function getCartItems(userId?: string): Promise<FrontendCartItem[]>
       name: row.name || '',
       price: currentPrice,
       image: row.image || images[0] || '',
+      selectedVariant: row.selectedVariant && typeof row.selectedVariant === 'object' ? row.selectedVariant : null,
     };
   });
 }
 
-export async function addToCart(productId: string, quantity = 1, userId?: string) {
+export async function addToCart(productId: string, quantity = 1, userId?: string, selectedVariant?: FrontendSelectedVariant | null) {
   return apiSend<{ ok: boolean }>('/cart-items', 'POST', {
     userId,
     productId,
     quantity,
+    selectedVariant: selectedVariant || null,
   });
 }
 
@@ -456,6 +523,7 @@ export async function createAdminProduct(input: {
   brand?: string;
   sellerId?: string;
   categoryId: string;
+  variantGroups?: ProductVariantGroup[];
 }) {
   return apiSend<{ ok: boolean; id: string }>('/admin/products', 'POST', input);
 }
@@ -473,6 +541,7 @@ export async function updateAdminProduct(
     brand: string;
     sellerId: string;
     categoryId: string;
+    variantGroups: ProductVariantGroup[];
   }>,
 ) {
   return apiSend<{ ok: boolean }>(`/admin/products/${encodeURIComponent(productId)}`, 'PATCH', input);
@@ -548,6 +617,7 @@ export async function createSellerProduct(input: {
   images?: string[];
   brand?: string;
   categoryId: string;
+  variantGroups?: ProductVariantGroup[];
 }) {
   return apiSend<{ ok: boolean; id: string }>('/seller/products', 'POST', input);
 }
@@ -568,6 +638,7 @@ export async function updateSellerProduct(
     images: string[];
     brand: string;
     categoryId: string;
+    variantGroups: ProductVariantGroup[];
   }>,
 ) {
   return apiSend<{ ok: boolean }>(`/seller/products/${encodeURIComponent(productId)}`, 'PATCH', input);

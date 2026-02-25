@@ -9,6 +9,7 @@ interface AdminLoginProps {
 export function AdminLogin({ onLoggedIn }: AdminLoginProps) {
   const [emailOrPhone, setEmailOrPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -50,11 +51,19 @@ export function AdminLogin({ onLoggedIn }: AdminLoginProps) {
           />
           <input
             className="w-full px-3 py-2 border rounded-lg"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={showPassword}
+              onChange={(e) => setShowPassword(e.target.checked)}
+            />
+            Show password
+          </label>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
