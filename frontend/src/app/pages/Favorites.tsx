@@ -50,8 +50,8 @@ export function Favorites({ onNavigate, onCartChange }: FavoritesProps) {
       await addToCart(productId, 1);
       onCartChange?.();
       showMessage('Added to cart');
-    } catch {
-      showMessage('Could not add to cart');
+    } catch (err) {
+      showMessage((err as any)?.message || 'Could not add to cart');
     }
   };
 

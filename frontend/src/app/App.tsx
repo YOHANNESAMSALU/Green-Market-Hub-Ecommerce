@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Navbar } from './components/Navbar';
+import { Footer } from './components/Footer';
 import { Home } from './pages/Home';
 import { ProductListing } from './pages/ProductListing';
 import { ProductDetails } from './pages/ProductDetails';
@@ -194,7 +195,7 @@ function App() {
       case 'checkout':
         return <Checkout onNavigate={handleNavigate} onCartChange={refreshCartCount} />;
       case 'seller-dashboard':
-        return <SellerDashboard authUser={authUser} onNavigate={handleNavigate} />;
+        return <SellerDashboard authUser={authUser} onNavigate={handleNavigate} onLogout={handleLogout} />;
       case 'login':
         return (
           <Login
@@ -229,6 +230,7 @@ function App() {
   };
 
   const showNavbar = !['seller-dashboard'].includes(currentPage);
+  const showFooter = !['seller-dashboard'].includes(currentPage);
 
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
@@ -248,6 +250,7 @@ function App() {
         </div>
       )}
       {renderPage()}
+      {showFooter && <Footer onNavigate={handleNavigate} />}
     </div>
   );
 }

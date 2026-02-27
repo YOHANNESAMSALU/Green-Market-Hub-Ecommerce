@@ -319,6 +319,25 @@ export async function getCartItems(userId?: string): Promise<FrontendCartItem[]>
 }
 
 export async function addToCart(productId: string, quantity = 1, userId?: string, selectedVariant?: FrontendSelectedVariant | null) {
+  // make sure the user is authenticated before trying to add to cart
+  // the backend currently falls back to a default customer when there is
+  // no session, which means un-authenticated clicks will appear to succeed
+  // on the server.  That behaviour is fine for demos but it is confusing
+  // from a UX perspective: a visitor will see "Added to cart" even though
+  // their items are stored against an anonymous account they can't access.
+  //
+  // To address the issue raised by the user we check for a session token on
+  // the client and reject early with a clear error message.  Callers should
+  // display the error message to the user.
+
+  const token = localStorage.getItem(AUTH_SESSION_TOKEN_KEY);
+  if (!token) {
+    // throw an ordinary Error so that callers can display the message or
+    // perform a redirect to the login page.  This message is intentionally
+    // user friendly and matches the behaviour the issue describes.
+    throw new Error('Please login to add to cart');
+  }
+
   return apiSend<{ ok: boolean }>('/cart-items', 'POST', {
     userId,
     productId,

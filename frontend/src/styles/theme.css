@@ -179,3 +179,19 @@
     line-height: 1.5;
   }
 }
+
+/*
+ * shrink typography on very small viewports (mobile <640px).
+ * Tailwinds default text utilities are rem-based, and the base
+ * font-size is controlled by --font-size on the html element.  by
+ * reducing the root font-size with a media query we effectively scale
+ * every text size down without having to override individual classes.
+ */
+@media (max-width: 640px) {
+  :root {
+    /* follow the guideline in `guidelines/Guidelines.md` that suggests
+       a 14px base font on narrow devices */
+    --font-size: 14px;
+  }
+}
+

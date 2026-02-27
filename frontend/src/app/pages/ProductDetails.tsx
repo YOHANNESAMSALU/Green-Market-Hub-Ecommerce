@@ -131,8 +131,9 @@ export function ProductDetails({ product, onNavigate, onCartChange }: ProductDet
       } : null);
       onCartChange?.();
       return true;
-    } catch {
-      showMessage('Could not add to cart');
+    } catch (err) {
+      // if the underlying error has a message (e.g. login required) display it
+      showMessage((err as any)?.message || 'Could not add to cart');
       return false;
     }
   };
@@ -152,8 +153,8 @@ export function ProductDetails({ product, onNavigate, onCartChange }: ProductDet
       if (added) {
         onNavigate('checkout');
       }
-    } catch {
-      showMessage('Could not start checkout');
+    } catch (err) {
+      showMessage((err as any)?.message || 'Could not start checkout');
     } finally {
       setIsBuyingNow(false);
     }
@@ -380,7 +381,7 @@ export function ProductDetails({ product, onNavigate, onCartChange }: ProductDet
                         onCartChange?.();
                         showMessage('Added to cart');
                       })
-                      .catch(() => showMessage('Could not add to cart'))
+                        .catch((err: any) => showMessage(err?.message || 'Could not add to cart'))
                   }
                   onToggleWishlist={() => toggleWishlist(related.id)}
                   isWishlisted={wishlist.includes(related.id)}

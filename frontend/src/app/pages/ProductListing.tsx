@@ -148,7 +148,7 @@ export function ProductListing({ onNavigate, onCartChange, initialFilters }: Pro
     if (!revealRows.length) return;
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reducedMotion) {
+    if (reducedMotion || isMobileViewport || !('IntersectionObserver' in window)) {
       revealRows.forEach((row) => row.classList.add('is-visible'));
       return;
     }
@@ -170,7 +170,7 @@ export function ProductListing({ onNavigate, onCartChange, initialFilters }: Pro
     });
 
     return () => observer.disconnect();
-  }, [filteredProducts.length, loading]);
+  }, [filteredProducts.length, isMobileViewport, loading]);
 
   const showMessage = (value: string) => {
     setMessage(value);
@@ -182,8 +182,8 @@ export function ProductListing({ onNavigate, onCartChange, initialFilters }: Pro
       await addToCart(productId, 1);
       onCartChange?.();
       showMessage('Added to cart');
-    } catch {
-      showMessage('Could not add to cart');
+    } catch (err) {
+      showMessage((err as any)?.message || 'Could not add to cart');
     }
   };
 
@@ -423,7 +423,7 @@ export function ProductListing({ onNavigate, onCartChange, initialFilters }: Pro
             {loading ? (
               <p className="text-gray-600">Loading products...</p>
             ) : (
-              <div data-scroll-reveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 mb-8 scroll-reveal">
+              <div data-scroll-reveal className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 mb-8 scroll-reveal">
                 {filteredProducts.map((product, index) => (
                   <div
                     key={product.id}

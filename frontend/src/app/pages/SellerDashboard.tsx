@@ -20,9 +20,10 @@ import {
 interface SellerDashboardProps {
   authUser: FrontendAuthUser | null;
   onNavigate: (page: string) => void;
+  onLogout: () => void;
 }
 
-export function SellerDashboard({ authUser, onNavigate }: SellerDashboardProps) {
+export function SellerDashboard({ authUser, onNavigate, onLogout }: SellerDashboardProps) {
   const blankVariantRow = () => ({ value: '', price: '', discountPrice: '', stock: '', sku: '', images: [] as string[] });
   const [activeItem, setActiveItem] = useState('overview');
   const [dashboard, setDashboard] = useState<any>(null);
@@ -393,7 +394,7 @@ export function SellerDashboard({ authUser, onNavigate }: SellerDashboardProps) 
 
   return (
     <div className="flex min-h-screen bg-[#F9FAFB]">
-      <DashboardSidebar type="seller" activeItem={activeItem} onItemClick={setActiveItem} />
+      <DashboardSidebar type="seller" activeItem={activeItem} onItemClick={setActiveItem} onLogout={onLogout} />
 
       <main className="flex-1 p-8 overflow-x-auto">
         <div className="mb-8">
