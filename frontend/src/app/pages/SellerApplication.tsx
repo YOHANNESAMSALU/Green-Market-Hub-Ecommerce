@@ -142,7 +142,7 @@ export function SellerApplication({ authUser, onNavigate }: SellerApplicationPro
             <Input label="Contact Phone (Ethiopia) *" value={form.contactPhone} onChange={(e) => updateField('contactPhone', e.target.value)} />
             <Input label="City *" value={form.city} onChange={(e) => updateField('city', e.target.value)} />
             <Input label="Business Address *" value={form.address} onChange={(e) => updateField('address', e.target.value)} />
-            <Input label="ID/License URL" value={form.idDocumentUrl} onChange={(e) => updateField('idDocumentUrl', e.target.value)} />
+            <Input label="ID/License URL (optional)" value={form.idDocumentUrl} onChange={(e) => updateField('idDocumentUrl', e.target.value)} />
             <Input label="Additional Notes" value={form.message} onChange={(e) => updateField('message', e.target.value)} />
 
             <Button variant="primary" onClick={submit} disabled={submitting}>

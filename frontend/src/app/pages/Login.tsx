@@ -21,6 +21,7 @@ export function Login({ onNavigate, onAuthSuccess, redirectTo = 'home' }: LoginP
   const [name, setName] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -48,6 +49,10 @@ export function Login({ onNavigate, onAuthSuccess, redirectTo = 'home' }: LoginP
       return 'Password is required.';
     }
 
+    if (mode === 'signup' && password.trim() !== confirmPassword.trim()) {
+      return 'Password confirmation does not match.';
+    }
+
     return '';
   };
 
@@ -72,7 +77,7 @@ export function Login({ onNavigate, onAuthSuccess, redirectTo = 'home' }: LoginP
       if (mode === 'signup') {
         const result = await signup({
           name: name.trim(),
-          password: password.trim(),
+          confirmPassword: confirmPassword.trim(),
           ...payload,
         });
         localStorage.setItem(AUTH_USER_KEY, JSON.stringify(result.user));
@@ -105,27 +110,6 @@ export function Login({ onNavigate, onAuthSuccess, redirectTo = 'home' }: LoginP
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl text-gray-900">{mode === 'login' ? 'Login' : 'Sign Up'}</h1>
             <Badge variant="success">Default Role: CUSTOMER</Badge>
-          </div>
-
-          <div className="flex gap-2 mb-6">
-            <Button
-              variant={mode === 'login' ? 'primary' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setMode('login');
-              }}
-            >
-              Login
-            </Button>
-            <Button
-              variant={mode === 'signup' ? 'primary' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setMode('signup');
-              }}
-            >
-              Sign Up
-            </Button>
           </div>
 
           <div className="flex gap-2 mb-6">
@@ -173,6 +157,15 @@ export function Login({ onNavigate, onAuthSuccess, redirectTo = 'home' }: LoginP
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            {mode === 'signup' && (
+              <Input
+                label="Confirm Password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Re-enter password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            )}
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"
@@ -185,9 +178,24 @@ export function Login({ onNavigate, onAuthSuccess, redirectTo = 'home' }: LoginP
             {error && <p className="text-sm text-red-600">{error}</p>}
             {message && <p className="text-sm text-[#166534]">{message}</p>}
 
-            <Button type="submit" variant="primary" className="w-full" disabled={submitting}>
-              {submitting ? 'Please wait...' : mode === 'signup' ? 'Create Account' : 'Login'}
-            </Button>
+            <div className="pt-2 space-y-2">
+              <Button type="submit" variant="primary" className="w-full" disabled={submitting}>
+                {submitting ? 'Please wait...' : mode === 'signup' ? 'Create Account' : 'Login'}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full border border-gray-200"
+                onClick={() => {
+                  setMode(mode === 'login' ? 'signup' : 'login');
+                  setError('');
+                  setMessage('');
+                  setConfirmPassword('');
+                }}
+              >
+                {mode === 'login' ? 'Need an account? Sign Up' : 'Already have an account? Login'}
+              </Button>
+            </div>
           </form>
         </div>
       </div>

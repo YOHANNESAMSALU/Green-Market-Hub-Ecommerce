@@ -868,14 +868,18 @@ const syncPaymentFromChapa = async (txRef) => {
 
 // Auth
 app.post('/auth/signup', async (req, res) => {
-  const { name, email, phone, password } = req.body || {};
+  const { name, email, phone, password, confirmPassword } = req.body || {};
   const normalizedName = typeof name === 'string' ? name.trim() : '';
   const normalizedEmail = normalizeEmail(email);
   const normalizedPhone = normalizeEthiopianPhone(phone);
   const normalizedPassword = typeof password === 'string' ? password.trim() : '';
+  const normalizedConfirmPassword = typeof confirmPassword === 'string' ? confirmPassword.trim() : '';
 
   if (!normalizedName) return res.status(400).json({ error: 'name is required' });
   if (!normalizedPassword) return res.status(400).json({ error: 'password is required' });
+  if (normalizedConfirmPassword && normalizedConfirmPassword !== normalizedPassword) {
+    return res.status(400).json({ error: 'password confirmation does not match' });
+  }
   if (!normalizedEmail && !normalizedPhone) {
     return res.status(400).json({ error: 'email or Ethiopian phone number is required' });
   }
@@ -995,14 +999,18 @@ app.post('/auth/login', async (req, res) => {
 });
 
 app.post('/auth/signup/start', async (req, res) => {
-  const { name, email, phone, password } = req.body || {};
+  const { name, email, phone, password, confirmPassword } = req.body || {};
   const normalizedName = typeof name === 'string' ? name.trim() : '';
   const normalizedEmail = normalizeEmail(email);
   const normalizedPhone = normalizeEthiopianPhone(phone);
   const normalizedPassword = typeof password === 'string' ? password.trim() : '';
+  const normalizedConfirmPassword = typeof confirmPassword === 'string' ? confirmPassword.trim() : '';
 
   if (!normalizedName) return res.status(400).json({ error: 'name is required' });
   if (!normalizedPassword) return res.status(400).json({ error: 'password is required' });
+  if (normalizedConfirmPassword && normalizedConfirmPassword !== normalizedPassword) {
+    return res.status(400).json({ error: 'password confirmation does not match' });
+  }
   if (!normalizedEmail && !normalizedPhone) {
     return res.status(400).json({ error: 'email or Ethiopian phone number is required' });
   }
@@ -1381,6 +1389,66 @@ app.patch('/auth/profile', async (req, res) => {
   } catch (err) {
     console.error('Auth profile update error:', err);
     res.status(500).json({ error: 'Could not update profile' });
+  }
+});
+
+app.post('/auth/change-password', async (req, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body || {};
+  const normalizedCurrentPassword = typeof currentPassword === 'string' ? currentPassword.trim() : '';
+  const normalizedNewPassword = typeof newPassword === 'string' ? newPassword.trim() : '';
+  const normalizedConfirmPassword = typeof confirmPassword === 'string' ? confirmPassword.trim() : '';
+
+  if (!normalizedCurrentPassword || !normalizedNewPassword || !normalizedConfirmPassword) {
+    return res.status(400).json({ error: 'currentPassword, newPassword and confirmPassword are required' });
+  }
+  if (normalizedNewPassword.length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  }
+  if (normalizedNewPassword !== normalizedConfirmPassword) {
+    return res.status(400).json({ error: 'Password confirmation does not match' });
+  }
+
+  try {
+    const userId = await resolveSessionUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const [rows] = await pool.execute(
+      `
+      SELECT password
+      FROM User
+      WHERE id = UUID_TO_BIN(?)
+      LIMIT 1
+      `,
+      [userId],
+    );
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+
+    const storedPassword = String(rows[0].password || '');
+    const validCurrentPassword = storedPassword.startsWith('scrypt$')
+      ? verifyPasswordHash(normalizedCurrentPassword, storedPassword)
+      : storedPassword.length > 0 && normalizedCurrentPassword === storedPassword;
+
+    if (!validCurrentPassword) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    if (normalizedCurrentPassword === normalizedNewPassword) {
+      return res.status(400).json({ error: 'New password must be different from current password' });
+    }
+
+    const nextPasswordHash = hashPassword(normalizedNewPassword);
+    await pool.execute(
+      `
+      UPDATE User
+      SET password = ?
+      WHERE id = UUID_TO_BIN(?)
+      `,
+      [nextPasswordHash, userId],
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Change password error:', err);
+    res.status(500).json({ error: 'Could not update password' });
   }
 });
 

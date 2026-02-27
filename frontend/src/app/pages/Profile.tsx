@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button } from '../components/Button';
 import {
   AUTH_USER_KEY,
+  changeMyPassword,
   FrontendAuthUser,
   fileToDataUrl,
   updateMyProfile,
@@ -19,6 +20,11 @@ export function Profile({ authUser, onNavigate, onAuthUserUpdated }: ProfileProp
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState('');
 
   if (!authUser) {
     return (
@@ -69,6 +75,39 @@ export function Profile({ authUser, onNavigate, onAuthUserUpdated }: ProfileProp
     } finally {
       setUploading(false);
       event.target.value = '';
+    }
+  };
+
+  const savePassword = async () => {
+    setPasswordMessage('');
+    if (!currentPassword.trim() || !newPassword.trim() || !confirmNewPassword.trim()) {
+      setPasswordMessage('All password fields are required.');
+      return;
+    }
+    if (newPassword.trim().length < 8) {
+      setPasswordMessage('New password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword.trim() !== confirmNewPassword.trim()) {
+      setPasswordMessage('New password confirmation does not match.');
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      await changeMyPassword({
+        currentPassword: currentPassword.trim(),
+        newPassword: newPassword.trim(),
+        confirmPassword: confirmNewPassword.trim(),
+      });
+      setPasswordMessage('Password updated successfully.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (err) {
+      setPasswordMessage(err instanceof Error ? err.message : 'Could not update password.');
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -127,6 +166,45 @@ export function Profile({ authUser, onNavigate, onAuthUserUpdated }: ProfileProp
             </Button>
             <Button variant="outline" onClick={() => onNavigate('orders')}>My Orders</Button>
             <Button variant="outline" onClick={() => onNavigate('checkout')}>Go To Checkout</Button>
+          </div>
+
+          <div className="mt-8 border border-gray-200 rounded-2xl p-5">
+            <h2 className="text-lg text-gray-900 mb-4">Change Password</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Current Password</p>
+                <input
+                  type="password"
+                  className="w-full px-3 py-2 border rounded-lg"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 mb-1">New Password</p>
+                <input
+                  type="password"
+                  className="w-full px-3 py-2 border rounded-lg"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Confirm New Password</p>
+                <input
+                  type="password"
+                  className="w-full px-3 py-2 border rounded-lg"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                />
+              </div>
+            </div>
+            {passwordMessage && <p className="text-sm text-gray-700 mt-3">{passwordMessage}</p>}
+            <div className="mt-4">
+              <Button variant="primary" onClick={savePassword} disabled={passwordSaving}>
+                {passwordSaving ? 'Updating...' : 'Update Password'}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

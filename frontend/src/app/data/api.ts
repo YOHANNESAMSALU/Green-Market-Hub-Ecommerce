@@ -386,6 +386,7 @@ export async function signup(input: {
   email?: string;
   phone?: string;
   password: string;
+  confirmPassword?: string;
 }) {
   return apiSend<{
     ok: boolean;
@@ -461,6 +462,14 @@ export async function getSessionUser() {
 
 export async function updateMyProfile(input: Partial<{ name: string; phone: string; image: string }>) {
   return apiSend<{ ok: boolean; user: FrontendAuthUser }>('/auth/profile', 'PATCH', input);
+}
+
+export async function changeMyPassword(input: {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}) {
+  return apiSend<{ ok: boolean }>('/auth/change-password', 'POST', input);
 }
 
 export async function promoteSelfToAdmin() {
